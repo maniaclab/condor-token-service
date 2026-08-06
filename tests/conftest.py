@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import jwt
 import pytest
@@ -23,8 +24,13 @@ from condor_token_service.config import Settings
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 TEST_KID = "test-signing-key"
+
+# What the fake condor_token_create prints — deterministic so tests can assert
+# both that the response carries it and that no log line ever does.
+FAKE_CONDOR_TOKEN = "eyJhbGciOiJIUzI1NiJ9.fake-condor-idtoken.deadbeef"
 
 
 @pytest.fixture(scope="session")
@@ -130,3 +136,43 @@ def make_token(
         return jwt.encode(claims, key or rsa_private_key, algorithm="RS256", headers=headers)
 
     return _make
+
+
+class FakeCondorBin(NamedTuple):
+    path: Path
+    args_file: Path
+
+
+def _install_fake_bin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> Path:
+    """Write an executable ``condor_token_create`` shell script into a tmpdir and prepend that tmpdir to PATH."""
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir(exist_ok=True)
+    script = bin_dir / "condor_token_create"
+    script.write_text(f"#!/bin/sh\n{body}\n")
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    return script
+
+
+@pytest.fixture
+def fake_condor_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeCondorBin:
+    """A fake condor_token_create on PATH: records its argv, prints a deterministic token."""
+    args_file = tmp_path / "condor_args.txt"
+    script = _install_fake_bin(
+        tmp_path,
+        monkeypatch,
+        f'echo "$@" > "{args_file}"\nprintf \'%s\\n\' "{FAKE_CONDOR_TOKEN}"',
+    )
+    return FakeCondorBin(path=script, args_file=args_file)
+
+
+@pytest.fixture
+def failing_condor_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A fake condor_token_create on PATH that fails like a real one whose pool password is unreadable."""
+    return _install_fake_bin(
+        tmp_path,
+        monkeypatch,
+        'echo "ERROR: could not read pool password file" >&2\nexit 1',
+    )
