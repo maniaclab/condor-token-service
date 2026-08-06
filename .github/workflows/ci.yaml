@@ -45,6 +45,27 @@ jobs:
       - name: Run tests
         run: pixi run -e dev test
 
+  integration-condor:
+    name: HTCondor integration (htcondor/mini)
+    runs-on: ubuntu-latest  # docker is preinstalled on ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.72.1
+          environments: dev
+
+      # Real htcondor/mini pool: validates that tokens minted with our exact
+      # flags authenticate against a real schedd as the right identity.
+      # Docker-gated so plain `pixi run test` stays docker-free.
+      - name: Run minicondor integration tests
+        env:
+          CONDOR_MINI_INTEGRATION: "1"
+        run: pixi run -e dev pytest tests/integration_condor/ -v
+
   helm-lint:
     name: Helm lint + template
     runs-on: ubuntu-latest
