@@ -13,9 +13,11 @@ infrastructure. In particular it must never reach the
 [af-mcp-broker](https://github.com/maniaclab/af-mcp-platform), which lives in
 a different trust domain and holds many other credentials.
 
-Instead, this service runs as pods scheduled (nodeSelector/tolerations)
-across the AF login nodes (login01–08) where that key already lives,
-hostPath-mounted read-only. The broker asks it to mint; the key stays put.
+Instead, this service runs as pods scheduled (affinity/tolerations) across
+the condor-enabled AF login nodes (login01–04 — the pool spike found
+login05–08 have no condor scheduler/client configured) where that key
+already lives, hostPath-mounted read-only. The broker asks it to mint; the
+key stays put.
 
 ```
  LLM client                af-mcp-platform                 Condor head node
@@ -85,9 +87,11 @@ Configuration is env-driven (`src/condor_token_service/config.py`):
 
 The Helm chart at `charts/condor-token-service/` encodes the security model:
 
-- **Node constraint** — values-driven `nodeSelector`/`tolerations` schedule
-  the pods across the login nodes holding the pool password (a shared role
-  label, not a hostname pin; two replicas for HA).
+- **Node constraint** — values-driven `nodeSelector`/`affinity`/
+  `tolerations` schedule the pods across the condor-enabled login nodes
+  holding the pool password (login01–04 at AF; they share no usable label,
+  so the chart ships a hostname-list nodeAffinity example and notes the
+  cleaner purposeful-label alternative; two replicas for HA).
 - **hostPath** — `/etc/condor/passwords.d` mounted read-only at the same
   path, so `condor_token_create` works unconfigured.
 - **Locked-down pod** — read-only root filesystem, all capabilities dropped,
@@ -102,11 +106,20 @@ claim from the *local* condor config's `TRUST_DOMAIN`, and the schedd rejects
 tokens whose issuer does not match the pool's trust domain. Mounting the pool
 password alone is therefore not enough — the pod needs minimal condor config
 aligned with the pool (at least `TRUST_DOMAIN`, matching
-`condor_config_val TRUST_DOMAIN` on the head node), and
-`CONDOR_IDENTITY_DOMAIN` must equal it for the schedd to map the token to the
-intended `user@domain`. The minicondor integration test encodes this, and
-`docs/pool-spike.md` is the checklist for verifying it against the real pool
-before finalizing the chart.
+`condor_config_val TRUST_DOMAIN` on the head node).
+
+**Identity-domain gotcha**: `CONDOR_IDENTITY_DOMAIN` is the pool's
+**user/UID domain** (`condor_config_val UID_DOMAIN`; at AF
+`af.uchicago.edu`, matching the provisioner's `$USER@af.uchicago.edu`) —
+**not** the trust domain above. The pool spike proved the schedd rejects
+tokens minted for `user@<TRUST_DOMAIN>` outright (`AUTHENTICATE:1004`) while
+`user@<UID_DOMAIN>` authenticates and maps correctly. The two domains
+coincide in single-host pools (like the `htcondor/mini` test image), which
+is exactly how the wrong assumption sneaks in.
+
+`docs/pool-spike.md` is the AF-specific record of verifying all of this
+against the real pool; `docs/deployment-checklist.md` is the generalized,
+site-agnostic checklist for other operators.
 
 ```bash
 helm lint charts/condor-token-service
