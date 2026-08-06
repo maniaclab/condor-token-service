@@ -2,9 +2,10 @@
 #
 # This service exists because HTCondor IDTOKENS are signed with the pool
 # password — a SYMMETRIC key that must never leave Condor infrastructure.
-# The pod schedules across the AF login nodes (login01–08), which hold that
-# key on their filesystem, and exposes exactly one minting endpoint to the
-# af-mcp-broker.
+# The pod schedules across the condor-enabled AF login nodes (login01–04
+# ONLY — login05–08 have no condor scheduler/client configured; see
+# docs/pool-spike.md), which hold that key on their filesystem, and exposes
+# exactly one minting endpoint to the af-mcp-broker.
 
 # Two replicas across the login nodes give the mint path HA. The in-memory
 # per-subject rate limit is per-replica, so the effective limit is
@@ -18,19 +19,38 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# REQUIRED in practice: constrain the pod to the login nodes (login01–08)
-# whose filesystems hold the pool password. Prefer the label shared by the
-# login-node set over a hostname pin (fill in the real label at deploy
-# time; verify key presence per docs/pool-spike.md check 2), e.g.
+# REQUIRED in practice: constrain the pod to the condor-enabled login nodes
+# (login01–04 ONLY) whose filesystems hold the pool password. The pool spike
+# found NO usable shared label on those four nodes (login04 alone has
+# `login: "true"`; login05 has `partition: login` but is NOT condor-enabled
+# — a trap), so either use `affinity` below with an explicit hostname list,
+# or (cleaner) apply a purposeful label to the four nodes and select it:
 #   nodeSelector:
-#     node-role.af.uchicago.edu/login: "true"
+#     af.uchicago.edu/condor-client: "true"
 nodeSelector: {}
 
-# Login nodes are commonly tainted to keep general workloads off them;
-# add the matching toleration here, e.g.
+# The realistic AF deployment today (no shared label): nodeAffinity with an
+# explicit hostname list, e.g.
+#   affinity:
+#     nodeAffinity:
+#       requiredDuringSchedulingIgnoredDuringExecution:
+#         nodeSelectorTerms:
+#           - matchExpressions:
+#               - key: kubernetes.io/hostname
+#                 operator: In
+#                 values:
+#                   - login01.af.uchicago.edu
+#                   - login02.af.uchicago.edu
+#                   - login03.af.uchicago.edu
+#                   - login04.af.uchicago.edu
+affinity: {}
+
+# The AF login nodes carry the taint `dedicated=ssh:NoSchedule`; the pod
+# must tolerate it to schedule there:
 #   tolerations:
-#     - key: "hub.jupyter.org/dedicated"
-#       operator: "Exists"
+#     - key: "dedicated"
+#       operator: "Equal"
+#       value: "ssh"
 #       effect: "NoSchedule"
 tolerations: []
 
@@ -45,7 +65,10 @@ config:
   brokerIssuer: "https://mcp.af.uchicago.edu"
   # Required `aud` claim — this service's identity in the protocol.
   expectedAudience: "condor-token-service"
-  # IDTOKENs are minted for `{unixname}@{condorIdentityDomain}`.
+  # IDTOKENs are minted for `{unixname}@{condorIdentityDomain}`. This is
+  # the pool's USER/UID domain (condor_config_val UID_DOMAIN), NOT its
+  # TRUST_DOMAIN — the spike showed the schedd rejects identities minted
+  # under the trust domain (docs/pool-spike.md).
   condorIdentityDomain: "af.uchicago.edu"
   # Passed to `condor_token_create -lifetime` (seconds).
   tokenLifetimeSeconds: 3600
@@ -91,14 +114,17 @@ service:
 
 networkPolicy:
   enabled: true
-  # Ingress: ONLY the broker may reach the minting endpoint. Point these
-  # selectors at the af-mcp-platform broker pods.
+  # Ingress: ONLY the broker may reach the minting endpoint. Defaults match
+  # the production af-mcp-platform deployment as verified by the pool spike:
+  # namespace `mcp`, broker pods labeled name=af-mcp-platform +
+  # component=broker.
   broker:
     namespaceSelector:
       matchLabels:
-        kubernetes.io/metadata.name: af-mcp
+        kubernetes.io/metadata.name: mcp
     podSelector:
       matchLabels:
+        app.kubernetes.io/name: af-mcp-platform
         app.kubernetes.io/component: broker
   # Egress: besides DNS, ONLY the origin serving config.brokerJwksUrl.
   # Defaults assume the JWKS is served by the same in-cluster broker pods;
@@ -107,9 +133,10 @@ networkPolicy:
   jwks:
     namespaceSelector:
       matchLabels:
-        kubernetes.io/metadata.name: af-mcp
+        kubernetes.io/metadata.name: mcp
     podSelector:
       matchLabels:
+        app.kubernetes.io/name: af-mcp-platform
         app.kubernetes.io/component: broker
     port: 8080
 
