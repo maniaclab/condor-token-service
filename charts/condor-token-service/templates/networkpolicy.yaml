@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+# Ingress: ONLY the broker pods may reach the minting endpoint.
+# Egress: ONLY DNS and the origin serving the broker's JWKS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "condor-token-service.fullname" . }}
+  labels:
+    {{- include "condor-token-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "condor-token-service.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.broker.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.broker.podSelector | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  egress:
+    # DNS — required to resolve the JWKS origin.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # The broker's JWKS endpoint (config.brokerJwksUrl) — the service's only
+    # outbound dependency.
+    - to:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.jwks.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml .Values.networkPolicy.jwks.podSelector | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.jwks.port }}
+{{- end }}

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "condor-token-service.fullname" . }}
+  labels:
+    {{- include "condor-token-service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "condor-token-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "condor-token-service.selectorLabels" . | nindent 8 }}
+    spec:
+      # This pod never talks to the Kubernetes API; withholding the
+      # ServiceAccount token removes an entire credential class from a pod
+      # that already holds the pool password mount.
+      automountServiceAccountToken: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # See values.yaml: reading the root-owned pool key typically requires
+      # runAsUser 0; everything else stays locked down (read-only rootfs,
+      # drop ALL, no privilege escalation, RuntimeDefault seccomp).
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: condor-token-service
+          image: {{ include "condor-token-service.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # Names must match Settings fields (config.py).
+            - name: BROKER_JWKS_URL
+              value: {{ .Values.config.brokerJwksUrl | quote }}
+            - name: BROKER_ISSUER
+              value: {{ .Values.config.brokerIssuer | quote }}
+            - name: EXPECTED_AUDIENCE
+              value: {{ .Values.config.expectedAudience | quote }}
+            - name: CONDOR_IDENTITY_DOMAIN
+              value: {{ .Values.config.condorIdentityDomain | quote }}
+            - name: TOKEN_LIFETIME_SECONDS
+              value: {{ .Values.config.tokenLifetimeSeconds | quote }}
+            - name: RATE_LIMIT_MAX_MINTS
+              value: {{ .Values.config.rateLimitMaxMints | quote }}
+            - name: RATE_LIMIT_WINDOW_SECONDS
+              value: {{ .Values.config.rateLimitWindowSeconds | quote }}
+            - name: CONDOR_TOKEN_CREATE_BIN
+              value: {{ .Values.config.condorTokenCreateBin | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.logLevel | quote }}
+            # Extra env vars from values (name: value pairs)
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key | quote }}
+              value: {{ $val | quote }}
+            {{- end }}
+          volumeMounts:
+            # The pool password — mounted read-only at the node's own path so
+            # condor_token_create finds it without extra configuration. The
+            # key itself never leaves this pod.
+            - name: pool-password
+              mountPath: {{ .Values.poolPassword.hostPath }}
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            # readyz verifies condor_token_create is executable and the
+            # broker JWKS is fetchable.
+            httpGet:
+              path: /readyz
+              port: http
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: pool-password
+          hostPath:
+            path: {{ .Values.poolPassword.hostPath }}
+            type: Directory
