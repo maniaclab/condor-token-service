@@ -2,13 +2,14 @@
 #
 # This service exists because HTCondor IDTOKENS are signed with the pool
 # password — a SYMMETRIC key that must never leave Condor infrastructure.
-# The pod is pinned to a Condor head/login node that holds that key on its
-# filesystem and exposes exactly one minting endpoint to the af-mcp-broker.
+# The pod schedules across the AF login nodes (login01–08), which hold that
+# key on their filesystem, and exposes exactly one minting endpoint to the
+# af-mcp-broker.
 
-# In-memory per-subject rate limiting: keep this at 1. Multiple replicas
-# would each hold an independent rate-limit window (and there is exactly one
-# node with the pool password anyway).
-replicaCount: 1
+# Two replicas across the login nodes give the mint path HA. The in-memory
+# per-subject rate limit is per-replica, so the effective limit is
+# rateLimitMax × replicaCount — acceptable for a cache-fronted mint path.
+replicaCount: 2
 
 image:
   registry: ghcr.io
@@ -17,13 +18,15 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# REQUIRED in practice: pin the pod to the Condor head/login node whose
-# filesystem holds the pool password, e.g.
+# REQUIRED in practice: constrain the pod to the login nodes (login01–08)
+# whose filesystems hold the pool password. Prefer the label shared by the
+# login-node set over a hostname pin (fill in the real label at deploy
+# time; verify key presence per docs/pool-spike.md check 2), e.g.
 #   nodeSelector:
-#     kubernetes.io/hostname: head01.af.uchicago.edu
+#     node-role.af.uchicago.edu/login: "true"
 nodeSelector: {}
 
-# Head/login nodes are commonly tainted to keep general workloads off them;
+# Login nodes are commonly tainted to keep general workloads off them;
 # add the matching toleration here, e.g.
 #   tolerations:
 #     - key: "hub.jupyter.org/dedicated"

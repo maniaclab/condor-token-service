@@ -13,9 +13,9 @@ infrastructure. In particular it must never reach the
 [af-mcp-broker](https://github.com/maniaclab/af-mcp-platform), which lives in
 a different trust domain and holds many other credentials.
 
-Instead, this service runs as a pod pinned (nodeSelector/tolerations) to a
-Condor head/login node where that key already lives, hostPath-mounted
-read-only. The broker asks it to mint; the key stays put.
+Instead, this service runs as pods scheduled (nodeSelector/tolerations)
+across the AF login nodes (login01–08) where that key already lives,
+hostPath-mounted read-only. The broker asks it to mint; the key stays put.
 
 ```
  LLM client                af-mcp-platform                 Condor head node
@@ -85,8 +85,9 @@ Configuration is env-driven (`src/condor_token_service/config.py`):
 
 The Helm chart at `charts/condor-token-service/` encodes the security model:
 
-- **Node pinning** — values-driven `nodeSelector`/`tolerations` pin the pod
-  to the head/login node holding the pool password.
+- **Node constraint** — values-driven `nodeSelector`/`tolerations` schedule
+  the pods across the login nodes holding the pool password (a shared role
+  label, not a hostname pin; two replicas for HA).
 - **hostPath** — `/etc/condor/passwords.d` mounted read-only at the same
   path, so `condor_token_create` works unconfigured.
 - **Locked-down pod** — read-only root filesystem, all capabilities dropped,
