@@ -51,6 +51,24 @@ class TestMintToken:
             "1800",
         ]
 
+    async def test_lifetime_flag_is_always_passed(
+        self, fake_condor_bin: FakeCondorBin, settings: Settings
+    ) -> None:
+        """Security invariant, not a stylistic choice.
+
+        Pool-spike finding (docs/pool-spike.md): condor_token_create invoked
+        WITHOUT -lifetime mints a token with no exp claim — it never expires.
+        This service must be structurally incapable of doing that: the flag
+        is always present and always carries the configured positive value
+        (Settings rejects <= 0, see test_config.py).
+        """
+        await mint_token("gstark", settings)
+        recorded = fake_condor_bin.args_file.read_text().split()
+        assert "-lifetime" in recorded
+        lifetime_value = recorded[recorded.index("-lifetime") + 1]
+        assert int(lifetime_value) == settings.token_lifetime_seconds
+        assert int(lifetime_value) > 0
+
     async def test_expires_at_reflects_configured_lifetime(
         self, fake_condor_bin: FakeCondorBin, settings: Settings
     ) -> None:

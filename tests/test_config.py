@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pytest
+from pydantic import ValidationError
 
 from condor_token_service.config import Settings, get_settings
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class TestDefaults:
@@ -30,6 +28,23 @@ class TestDefaults:
 
     def test_jwks_cache_ttl_default(self) -> None:
         assert Settings(_env_file=None).jwks_cache_ttl_seconds == 300
+
+
+class TestLifetimeInvariant:
+    """A non-positive lifetime must be rejected at construction time.
+
+    Pool-spike finding (docs/pool-spike.md): condor_token_create invoked
+    WITHOUT -lifetime mints a token with no exp claim at all — it never
+    expires. The service always passes -lifetime (asserted in
+    test_minting.py), and rejecting <= 0 here closes the other half of the
+    invariant: there is no configuration under which the flag is missing or
+    meaningless.
+    """
+
+    @pytest.mark.parametrize("lifetime", [0, -1, -3600])
+    def test_non_positive_lifetime_is_rejected(self, lifetime: int) -> None:
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, token_lifetime_seconds=lifetime)
 
 
 class TestEnvOverrides:
