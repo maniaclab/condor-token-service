@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 # pydantic-settings matches env vars to field names case-insensitively, so the
@@ -33,12 +34,21 @@ class Settings(BaseSettings):
     expected_audience: str = "condor-token-service"
 
     # Domain half of the HTCondor identity: tokens are minted for
-    # `{unixname}@{condor_identity_domain}`.
+    # `{unixname}@{condor_identity_domain}`. This is the pool's USER/UID
+    # domain (`condor_config_val UID_DOMAIN`; at AF, `af.uchicago.edu` —
+    # matching the provisioner's `$USER@af.uchicago.edu`), NOT the pool's
+    # TRUST_DOMAIN that lands in the token's `iss` claim. The pool spike
+    # (docs/pool-spike.md) showed the schedd rejects tokens whose identity
+    # uses the trust domain instead.
     condor_identity_domain: str = "af.uchicago.edu"
 
     # Lifetime passed to `condor_token_create -lifetime` and used to compute
-    # the response's `expires_at`.
-    token_lifetime_seconds: int = 3600
+    # the response's `expires_at`. Must be positive — SECURITY INVARIANT:
+    # condor_token_create invoked without -lifetime mints a token with NO
+    # exp claim at all (it never expires; pool-spike finding), so this
+    # service always passes the flag and refuses to start with a value that
+    # would make it meaningless.
+    token_lifetime_seconds: int = Field(default=3600, gt=0)
 
     # Per-subject sliding-window rate limit: at most `rate_limit_max_mints`
     # successful mint attempts per `rate_limit_window_seconds`.
