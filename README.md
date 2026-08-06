@@ -96,6 +96,17 @@ The Helm chart at `charts/condor-token-service/` encodes the security model:
   the broker JWKS origin.
 - **No ConfigMap** — all configuration is env-from-values.
 
+**Trust-domain gotcha**: `condor_token_create` derives the token's `iss`
+claim from the *local* condor config's `TRUST_DOMAIN`, and the schedd rejects
+tokens whose issuer does not match the pool's trust domain. Mounting the pool
+password alone is therefore not enough — the pod needs minimal condor config
+aligned with the pool (at least `TRUST_DOMAIN`, matching
+`condor_config_val TRUST_DOMAIN` on the head node), and
+`CONDOR_IDENTITY_DOMAIN` must equal it for the schedd to map the token to the
+intended `user@domain`. The minicondor integration test encodes this, and
+`docs/pool-spike.md` is the checklist for verifying it against the real pool
+before finalizing the chart.
+
 ```bash
 helm lint charts/condor-token-service
 helm template condor-token-service charts/condor-token-service
@@ -120,9 +131,17 @@ pixi run typecheck    # mypy src
 pixi run -e dev lint-all   # everything the CI lint job runs (ruff + mypy + pre-commit)
 ```
 
-Tests never touch the network or a real Condor pool: the JWKS is served by
-an in-process stub around a real generated RSA keypair, and
-`condor_token_create` is a fake executable script on `PATH`. The one real
-end-to-end test (`tests/test_e2e.py`) is skipped unless `CONDOR_E2E=1`, and
-requires a real pool, a real broker-minted token, and a deployed service —
-it is never faked.
+The default test suite never touches the network or a real Condor pool: the
+JWKS is served by an in-process stub around a real generated RSA keypair, and
+`condor_token_create` is a fake executable script on `PATH`. Two opt-in
+layers sit above it:
+
+- `CONDOR_MINI_INTEGRATION=1 pixi run -e dev pytest tests/integration_condor/`
+  spins up a real [htcondor/mini](https://hub.docker.com/r/htcondor/mini)
+  pool in docker and proves that tokens minted with our exact flags carry
+  the expected claims and authenticate against a real schedd (via
+  `condor_ping` forced to IDTOKENS) as the right identity. CI runs this in
+  the `integration-condor` job.
+- `tests/test_e2e.py` is skipped unless `CONDOR_E2E=1`, and requires a real
+  pool, a real broker-minted token, and a deployed service — it is never
+  faked.
