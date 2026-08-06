@@ -29,7 +29,9 @@ def test_token_values_are_redacted(capsys: pytest.CaptureFixture[str]) -> None:
     # Defense in depth: even if a code path mistakenly passes a token to a
     # logger, the emitted line must not contain it.
     configure_logging("INFO")
-    structlog.get_logger("test").info("oops", token="super-secret", authorization="Bearer xyz")
+    structlog.get_logger("test").info(
+        "oops", token="super-secret", authorization="Bearer xyz"
+    )
     line = capsys.readouterr().out.strip().splitlines()[-1]
     assert "super-secret" not in line
     assert "Bearer xyz" not in line

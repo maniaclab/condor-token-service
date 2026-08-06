@@ -63,7 +63,7 @@ async def mint_token(unixname: str, settings: Settings) -> MintedToken:
     except OSError as exc:
         # Binary missing or not executable — surfaced by readyz, but a race
         # (node reconfiguration) can still land here.
-        logger.error(
+        logger.exception(
             "condor_token_create_spawn_failed",
             binary=settings.condor_token_create_bin,
             error=str(exc),

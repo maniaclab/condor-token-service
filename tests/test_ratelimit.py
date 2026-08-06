@@ -21,9 +21,7 @@ class TestRateLimiter:
         for i in range(3):
             assert limiter.try_acquire("subject-a", now=float(i)) is None
 
-    def test_blocks_event_over_max_with_retry_after(
-        self, limiter: RateLimiter
-    ) -> None:
+    def test_blocks_event_over_max_with_retry_after(self, limiter: RateLimiter) -> None:
         for i in range(3):
             limiter.try_acquire("subject-a", now=float(i))
         retry_after = limiter.try_acquire("subject-a", now=10.0)

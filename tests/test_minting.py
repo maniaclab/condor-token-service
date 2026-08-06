@@ -13,7 +13,6 @@ import pytest
 
 from condor_token_service.config import Settings
 from condor_token_service.minting import MintingError, mint_token
-
 from tests.conftest import FAKE_CONDOR_TOKEN, _install_fake_bin
 
 if TYPE_CHECKING:

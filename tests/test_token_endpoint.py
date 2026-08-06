@@ -13,16 +13,12 @@ import pytest
 from structlog.testing import capture_logs
 
 from condor_token_service.config import Settings
-
 from tests.conftest import FAKE_CONDOR_TOKEN
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     import httpx
-
-    from tests.conftest import FakeCondorBin
 
 
 def _auth(token: str) -> dict[str, str]:

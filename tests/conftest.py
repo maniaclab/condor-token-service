@@ -135,7 +135,9 @@ def make_token(
         for claim in omit:
             claims.pop(claim, None)
         headers = {"kid": kid} if kid is not None else None
-        return jwt.encode(claims, key or rsa_private_key, algorithm="RS256", headers=headers)
+        return jwt.encode(
+            claims, key or rsa_private_key, algorithm="RS256", headers=headers
+        )
 
     return _make
 

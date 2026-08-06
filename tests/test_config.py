@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
+from typing import TYPE_CHECKING
 
 from condor_token_service.config import Settings, get_settings
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class TestDefaults:
@@ -38,7 +41,9 @@ class TestEnvOverrides:
         monkeypatch.setenv("TOKEN_LIFETIME_SECONDS", "60")
         monkeypatch.setenv("RATE_LIMIT_MAX_MINTS", "5")
         monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "10")
-        monkeypatch.setenv("CONDOR_TOKEN_CREATE_BIN", "/opt/condor/bin/condor_token_create")
+        monkeypatch.setenv(
+            "CONDOR_TOKEN_CREATE_BIN", "/opt/condor/bin/condor_token_create"
+        )
 
         settings = Settings(_env_file=None)
         assert settings.broker_jwks_url == "https://broker.example/jwks"

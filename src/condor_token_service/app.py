@@ -74,7 +74,11 @@ async def issue_token(
 
     if credentials is None:
         _audit(
-            subject=None, identity=None, jti=None, outcome="denied", request_id=request_id
+            subject=None,
+            identity=None,
+            jti=None,
+            outcome="denied",
+            request_id=request_id,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -87,7 +91,9 @@ async def issue_token(
     except HTTPException as exc:
         # 401 (invalid token) is a denial; anything else (e.g. the JWKS
         # fetch's 502) is a platform error, not the caller's fault.
-        outcome = "denied" if exc.status_code == status.HTTP_401_UNAUTHORIZED else "error"
+        outcome = (
+            "denied" if exc.status_code == status.HTTP_401_UNAUTHORIZED else "error"
+        )
         _audit(
             subject=peek_sub(credentials.credentials),
             identity=None,
@@ -103,7 +109,11 @@ async def issue_token(
     unixname = claims.get("unixname")
     if not isinstance(unixname, str) or not unixname.strip():
         _audit(
-            subject=subject, identity=None, jti=jti, outcome="denied", request_id=request_id
+            subject=subject,
+            identity=None,
+            jti=jti,
+            outcome="denied",
+            request_id=request_id,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
