@@ -171,9 +171,15 @@ class TestFullServicePath:
         )
         wrapper.chmod(0o755)
 
-        # condor_identity_domain MUST equal the pool's TRUST_DOMAIN: the
-        # schedd maps the token to `sub` only when `iss` matches, and both
-        # come from the minting side's condor config.
+        # condor_identity_domain is set to the pool's trust domain here
+        # because in htcondor/mini the two COINCIDE: a single-host pool maps
+        # user@<host> identities and issues iss=<host>. Real pools separate
+        # them — the identity domain is the pool's user/UID domain
+        # (condor_config_val UID_DOMAIN), and the AF pool spike
+        # (docs/pool-spike.md, finding 1) showed the schedd rejecting
+        # trust-domain identities outright. That coincidence is exactly why
+        # this docker layer could not retire the domain risk and the
+        # real-pool spike was needed.
         settings = Settings(
             _env_file=None,
             broker_jwks_url="https://broker.test/jwks",
