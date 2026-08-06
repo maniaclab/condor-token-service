@@ -63,8 +63,13 @@ tolerations: []
 config:
   # Where the broker publishes the JWKS for its AF Broker Identity Token
   # signing keys (maniaclab/af-mcp-platform#162). Must agree with the
-  # networkPolicy.jwks egress rule below.
-  brokerJwksUrl: "https://mcp.af.uchicago.edu/.well-known/jwks.json"
+  # networkPolicy.jwks egress rule below: the default fetches IN-CLUSTER,
+  # matching the default egress selectors (the public
+  # https://mcp.af.uchicago.edu URL is blocked by that policy — using it
+  # requires replacing networkPolicy.jwks with an ipBlock rule for the
+  # ingress). This is a fetch location only; iss validation is
+  # brokerIssuer below.
+  brokerJwksUrl: "http://af-mcp-platform-broker.mcp.svc.cluster.local:8080/.well-known/jwks.json"
   # Required `iss` claim on inbound identity tokens.
   brokerIssuer: "https://mcp.af.uchicago.edu"
   # Required `aud` claim — this service's identity in the protocol.
