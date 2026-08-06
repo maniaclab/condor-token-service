@@ -19,6 +19,10 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
+# Pull secret(s) for the registry above (ghcr packages default to private),
+# e.g. [{name: ghcr-pull-secret}] with the SealedSecret deployed alongside.
+imagePullSecrets: []
+
 # REQUIRED in practice: constrain the pod to the condor-enabled login nodes
 # (login01–04 ONLY) whose filesystems hold the pool password. The pool spike
 # found NO usable shared label on those four nodes (login04 alone has
