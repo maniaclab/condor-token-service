@@ -14,16 +14,18 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 
 from condor_token_service import identity
+from condor_token_service.app import create_app
 from condor_token_service.config import Settings
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import AsyncIterator, Callable
     from pathlib import Path
 
 TEST_KID = "test-signing-key"
@@ -176,3 +178,26 @@ def failing_condor_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         monkeypatch,
         'echo "ERROR: could not read pool password file" >&2\nexit 1',
     )
+
+
+@pytest.fixture
+def make_client(
+    stub_jwks_fetch: JwksFetchStub,
+) -> Callable[[Settings], httpx.AsyncClient]:
+    """Factory building an ASGI test client around a fresh app for *settings*."""
+
+    def _make(settings: Settings) -> httpx.AsyncClient:
+        app = create_app(settings)
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        )
+
+    return _make
+
+
+@pytest.fixture
+async def client(
+    make_client: Callable[[Settings], httpx.AsyncClient], settings: Settings
+) -> AsyncIterator[httpx.AsyncClient]:
+    async with make_client(settings) as test_client:
+        yield test_client
