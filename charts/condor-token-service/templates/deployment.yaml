@@ -59,6 +59,8 @@ spec:
               value: {{ .Values.config.expectedAudience | quote }}
             - name: CONDOR_IDENTITY_DOMAIN
               value: {{ .Values.config.condorIdentityDomain | quote }}
+            - name: CONDOR_TRUST_DOMAIN
+              value: {{ .Values.config.condorTrustDomain | quote }}
             - name: TOKEN_LIFETIME_SECONDS
               value: {{ .Values.config.tokenLifetimeSeconds | quote }}
             - name: RATE_LIMIT_MAX_MINTS

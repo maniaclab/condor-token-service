@@ -104,3 +104,44 @@ class TestMintToken:
         _install_fake_bin(tmp_path, monkeypatch, "exit 0")
         with pytest.raises(MintingError):
             await mint_token("gstark", settings)
+
+
+class TestTrustDomain:
+    """The container has no HTCondor config, so a bare condor_token_create
+    derives TRUST_DOMAIN from the local hostname and mints tokens whose
+    ``iss`` is the pod name -- rejected by the schedd and by anything
+    pinning the pool trust domain. When ``condor_trust_domain`` is set, it
+    must reach the subprocess as the ``_CONDOR_TRUST_DOMAIN`` config
+    override; when unset, the environment must not carry the variable (a
+    host-run service should keep deriving from the real local config).
+    """
+
+    async def test_trust_domain_env_passed_to_binary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "trust_domain.txt"
+        _install_fake_bin(
+            tmp_path,
+            monkeypatch,
+            f'echo "${{_CONDOR_TRUST_DOMAIN:-UNSET}}" > "{env_file}"\n'
+            f"printf '%s\\n' \"{FAKE_CONDOR_TOKEN}\"",
+        )
+        settings = Settings(
+            _env_file=None, condor_trust_domain="head01.af.uchicago.edu"
+        )
+        await mint_token("alice", settings)
+        assert env_file.read_text().strip() == "head01.af.uchicago.edu"
+
+    async def test_trust_domain_env_absent_when_unconfigured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / "trust_domain.txt"
+        _install_fake_bin(
+            tmp_path,
+            monkeypatch,
+            f'echo "${{_CONDOR_TRUST_DOMAIN:-UNSET}}" > "{env_file}"\n'
+            f"printf '%s\\n' \"{FAKE_CONDOR_TOKEN}\"",
+        )
+        settings = Settings(_env_file=None)
+        await mint_token("alice", settings)
+        assert env_file.read_text().strip() == "UNSET"

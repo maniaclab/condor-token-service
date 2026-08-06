@@ -8,7 +8,7 @@ bottom; every parameter you record maps to a chart value or env var.
 
 | Parameter | Where it lands |
 | --- | --- |
-| `<TRUST_DOMAIN>` | minimal condor config inside the pod (`_condor_TRUST_DOMAIN`) |
+| `<TRUST_DOMAIN>` | `config.condorTrustDomain` / `CONDOR_TRUST_DOMAIN` |
 | `<IDENTITY_DOMAIN>` | `config.condorIdentityDomain` / `CONDOR_IDENTITY_DOMAIN` |
 | `<SIGNING_KEY_PATH>` | `poolPassword.hostPath` |
 | `<CONDOR_NODES>` | `nodeSelector` / `affinity` (+ `tolerations`) |

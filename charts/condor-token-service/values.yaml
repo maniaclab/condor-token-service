@@ -79,6 +79,13 @@ config:
   # TRUST_DOMAIN — the spike showed the schedd rejects identities minted
   # under the trust domain (docs/pool-spike.md).
   condorIdentityDomain: "af.uchicago.edu"
+  # The pool's TRUST_DOMAIN (condor_config_val TRUST_DOMAIN), exported to
+  # condor_token_create as _CONDOR_TRUST_DOMAIN and landing in the minted
+  # token's `iss`. REQUIRED in this chart's containerized setting: the image
+  # carries no HTCondor config, so an unset trust domain makes
+  # condor_token_create fall back to the pod hostname -- minting
+  # `iss=<pod name>` tokens the schedd rejects.
+  condorTrustDomain: "head01.af.uchicago.edu"
   # Passed to `condor_token_create -lifetime` (seconds).
   tokenLifetimeSeconds: 3600
   # Per-subject sliding-window rate limit.

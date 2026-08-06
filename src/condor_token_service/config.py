@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     # uses the trust domain instead.
     condor_identity_domain: str = "af.uchicago.edu"
 
+    # The pool's TRUST_DOMAIN, exported to condor_token_create as the
+    # `_CONDOR_TRUST_DOMAIN` config override and landing in the minted
+    # token's `iss` claim. REQUIRED in a container: with no HTCondor config
+    # present, condor_token_create derives TRUST_DOMAIN from the local
+    # hostname and mints `iss=<pod name>` tokens that the schedd (and any
+    # consumer pinning the pool trust domain, e.g. condor-mcp) rejects.
+    # Leave empty only when the service runs on a host whose real Condor
+    # config already defines TRUST_DOMAIN (the pool-spike scenario).
+    condor_trust_domain: str = ""
+
     # Lifetime passed to `condor_token_create -lifetime` and used to compute
     # the response's `expires_at`. Must be positive — SECURITY INVARIANT:
     # condor_token_create invoked without -lifetime mints a token with NO

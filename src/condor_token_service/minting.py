@@ -9,6 +9,7 @@ key into Python.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -53,9 +54,17 @@ async def mint_token(unixname: str, settings: Settings) -> MintedToken:
         "-lifetime",
         str(settings.token_lifetime_seconds),
     ]
+    # _CONDOR_<PARAM> environment overrides beat any config file, so this
+    # pins the minted token's `iss` (= TRUST_DOMAIN) regardless of whether
+    # the surrounding environment has an HTCondor config at all -- see the
+    # condor_trust_domain comment in config.py. env=None inherits untouched.
+    env: dict[str, str] | None = None
+    if settings.condor_trust_domain:
+        env = {**os.environ, "_CONDOR_TRUST_DOMAIN": settings.condor_trust_domain}
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,
+            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
