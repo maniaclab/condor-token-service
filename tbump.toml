@@ -1,4 +1,4 @@
-github_url = "https://github.com/maniaclab/condor_token_service"
+github_url = "https://github.com/maniaclab/condor-token-service"
 
 [version]
 current = "0.1.1"
