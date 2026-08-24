@@ -2,8 +2,8 @@ apiVersion: v2
 name: condor-token-service
 description: HTCondor IDTOKEN issuance for the UChicago ATLAS Analysis Facility MCP platform
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+version: 0.1.2
+appVersion: "0.1.2"
 keywords: [htcondor, idtoken, mcp, atlas, hep, analysis-facility]
 home: https://github.com/maniaclab/condor-token-service
 sources: [https://github.com/maniaclab/condor-token-service]
