@@ -106,10 +106,16 @@ config:
 env: {}
 
 poolPassword:
-  # HTCondor pool signing key (POOL), Secret-mounted read-only so the key
+  # HTCondor pool signing key (POOL), sourced from a Secret so the key
   # material lives only in-cluster and never touches a node's filesystem.
   # Mirrors how the AF htcondor namespace's execute/submit pods consume the
   # same Secret (af/htcondor/execute/deployment-*.yaml, af/htcondor/submit).
+  #
+  # NOT mounted directly into the app container: a Secret volume mounts
+  # world-readable (0644, root-owned), which condor_token_create's own
+  # secure-file check rejects. The deployment's fix-pool-password-perms init
+  # container copies it into an emptyDir with the ownership/mode
+  # condor_token_create requires -- see templates/deployment.yaml.
   secretName: htcondor-pool-password
   secretKey: htcondor-pool-password
   # condor_token_create's default SEC_PASSWORD_DIRECTORY expects a file
