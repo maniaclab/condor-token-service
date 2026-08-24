@@ -1,9 +1,9 @@
 """HTCondor IDTOKEN minting via the ``condor_token_create`` CLI.
 
-The IDTOKEN signing key is the pool password — a symmetric secret hostPath-
+The IDTOKEN signing key is the pool password — a symmetric secret Secret-
 mounted read-only into this pod and readable only here. Minting therefore
-shells out to Condor's own tooling on this node rather than ever loading the
-key into Python.
+shells out to Condor's own tooling rather than ever loading the key into
+Python.
 """
 
 from __future__ import annotations

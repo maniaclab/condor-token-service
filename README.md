@@ -13,11 +13,11 @@ infrastructure. In particular it must never reach the
 [af-mcp-broker](https://github.com/maniaclab/af-mcp-platform), which lives in
 a different trust domain and holds many other credentials.
 
-Instead, this service runs as pods scheduled (affinity/tolerations) across
-the condor-enabled AF login nodes (login01–04 — the pool spike found
-login05–08 have no condor scheduler/client configured) where that key
-already lives, hostPath-mounted read-only. The broker asks it to mint; the
-key stays put.
+Instead, this service runs as pods in the `htcondor` namespace with the pool
+password mounted read-only from the `htcondor-pool-password` Kubernetes
+Secret — the same Secret the AF pool's execute/submit pods already use. The
+key never touches a node's filesystem. The broker asks it to mint; the key
+stays in-cluster.
 
 ```
  LLM client                af-mcp-platform                 Condor head node
@@ -88,25 +88,27 @@ Configuration is env-driven (`src/condor_token_service/config.py`):
 The Helm chart at `charts/condor-token-service/` encodes the security model:
 
 - **Node constraint** — values-driven `nodeSelector`/`affinity`/
-  `tolerations` schedule the pods across the condor-enabled login nodes
-  holding the pool password (login01–04 at AF; they share no usable label,
-  so the chart ships a hostname-list nodeAffinity example and notes the
-  cleaner purposeful-label alternative; two replicas for HA).
-- **hostPath** — `/etc/condor/passwords.d` mounted read-only at the same
-  path, so `condor_token_create` works unconfigured.
+  `tolerations`, unset by default. Historically required so the pod landed
+  on the login nodes whose filesystem held the pool password; now that the
+  key comes from a Secret, nothing forces a particular node — left
+  available for sites that still want to constrain placement for other
+  reasons (AF currently keeps a login01–04 constraint; two replicas for HA).
+- **Secret-mounted pool password** — the `htcondor-pool-password` Secret
+  mounted read-only as `/etc/condor/passwords.d/POOL`, so
+  `condor_token_create` works unconfigured.
 - **Locked-down pod** — read-only root filesystem, all capabilities dropped,
-  `RuntimeDefault` seccomp, no ServiceAccount token. `runAsUser: 0` is the
-  one documented concession: the pool key is conventionally `0600 root:root`.
+  `RuntimeDefault` seccomp, no ServiceAccount token, fixed non-root
+  `runAsUser`/`runAsGroup`.
 - **NetworkPolicy** — ingress only from the broker pods; egress only DNS and
   the broker JWKS origin.
 - **No ConfigMap** — all configuration is env-from-values.
 
 **Trust-domain gotcha**: `condor_token_create` derives the token's `iss`
 claim from the *local* condor config's `TRUST_DOMAIN`, and the schedd rejects
-tokens whose issuer does not match the pool's trust domain. Mounting the pool
-password alone is therefore not enough — the pod needs minimal condor config
-aligned with the pool (at least `TRUST_DOMAIN`, matching
-`condor_config_val TRUST_DOMAIN` on the head node).
+tokens whose issuer does not match the pool's trust domain. The Secret-
+mounted pool password alone is therefore not enough — the pod needs
+`_CONDOR_TRUST_DOMAIN` set (via `config.condorTrustDomain`) aligned with the
+pool (matching `condor_config_val TRUST_DOMAIN` on the head node).
 
 **Identity-domain gotcha**: `CONDOR_IDENTITY_DOMAIN` is the pool's
 **user/UID domain** (`condor_config_val UID_DOMAIN`; at AF

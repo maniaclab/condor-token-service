@@ -10,8 +10,8 @@ bottom; every parameter you record maps to a chart value or env var.
 | --- | --- |
 | `<TRUST_DOMAIN>` | `config.condorTrustDomain` / `CONDOR_TRUST_DOMAIN` |
 | `<IDENTITY_DOMAIN>` | `config.condorIdentityDomain` / `CONDOR_IDENTITY_DOMAIN` |
-| `<SIGNING_KEY_PATH>` | `poolPassword.hostPath` |
-| `<CONDOR_NODES>` | `nodeSelector` / `affinity` (+ `tolerations`) |
+| `<SIGNING_KEY_SECRET>` | `poolPassword.secretName` / `poolPassword.secretKey` |
+| `<CONDOR_NODES>` | `nodeSelector` / `affinity` (+ `tolerations`) — optional, see step 4 |
 | `<CALLER_NS_LABELS>` / `<CALLER_POD_LABELS>` | `networkPolicy.broker.*` / `networkPolicy.jwks.*` |
 | `<JWKS_URL>` | `config.brokerJwksUrl` / `BROKER_JWKS_URL` |
 | `<LIFETIME_SECONDS>` | `config.tokenLifetimeSeconds` (must be > 0) |
@@ -46,30 +46,40 @@ condor_config_val UID_DOMAIN
 > `htcondor/mini`, which is exactly how the assumption sneaks in) — verify
 > empirically in step 5.
 
-## 3. [ ] Locate the signing key and its permissions
+## 3. [ ] Locate the signing key and get it into a Secret
 
 ```bash
 condor_config_val SEC_TOKEN_POOL_SIGNING_KEY_FILE
-ls -l "$(dirname "$(condor_config_val SEC_TOKEN_POOL_SIGNING_KEY_FILE)")"
 ```
 
-Record the path (chart default `/etc/condor/passwords.d`) and owner/mode.
-Root-only `0600` is conventional and is what forces the chart's documented
-`runAsUser: 0`; if your site keeps it group-readable by a dedicated gid,
-run the pod as that gid instead.
+Read that file's contents on a real condor node (root access required) and
+put it into a Kubernetes Secret the chart can mount — reuse an existing one
+if your pool's other HTCondor pods already have the key in a Secret (e.g.
+AF's `htcondor-pool-password`), or create a new one:
 
-## 4. [ ] Establish which nodes are condor-enabled AND hold the key
+```bash
+kubectl create secret generic <name> -n <namespace> \
+  --from-file=<key>=<path-to-signing-key-file>
+```
 
-Do not assume a node class ("the login nodes") is uniform — at AF only
-login01–04 of eight had a condor scheduler/client configured. On each
-candidate node:
+Record the Secret's name and key for `poolPassword.secretName` /
+`poolPassword.secretKey`. Unlike a hostPath mount, ownership/mode on the
+source node no longer matters once the key is in the Secret — the chart's
+`podSecurityContext` runs as a fixed non-root uid/gid regardless.
+
+## 4. [ ] (Optional) Establish which nodes are condor-enabled
+
+A Secret-mounted key places no requirement on which node the pod lands on —
+skip this step unless you have another reason (dedicated hardware, existing
+network policy, etc.) to constrain placement. If you do, do not assume a
+node class ("the login nodes") is uniform — at AF only login01–04 of eight
+had a condor scheduler/client configured. On each candidate node:
 
 ```bash
 condor_config_val TRUST_DOMAIN          # errors if condor is not configured
-test -s <SIGNING_KEY_PATH>/POOL && echo key-present
 ```
 
-Nodes failing either test are excluded, however plausible their labels look
+Nodes failing that test are excluded, however plausible their labels look
 (AF's login05 carried `partition: login` and was not condor-enabled).
 
 ## 5. [ ] Mint from a container and verify against the production schedd
@@ -108,9 +118,10 @@ Pass requires `Authenticated using: IDTOKENS` and a `Remote Mapping` of
 `-identity <testuser>@<TRUST_DOMAIN>` to confirm empirically which domain
 your schedd maps (step 2's warning).
 
-## 6. [ ] Node placement strategy
+## 6. [ ] (Optional) Node placement strategy
 
-Check whether your condor-enabled nodes share a usable label:
+Only relevant if you did step 4. Check whether your condor-enabled nodes
+share a usable label:
 
 ```bash
 kubectl get nodes --show-labels

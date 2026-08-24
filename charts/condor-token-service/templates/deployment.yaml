@@ -34,9 +34,10 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # See values.yaml: reading the root-owned pool key typically requires
-      # runAsUser 0; everything else stays locked down (read-only rootfs,
-      # drop ALL, no privilege escalation, RuntimeDefault seccomp).
+      # See values.yaml: the pool password comes from a Secret volume
+      # (kubelet-owned, not a node's filesystem), so the pod runs as a fixed
+      # non-root uid/gid; everything else stays locked down (read-only
+      # rootfs, drop ALL, no privilege escalation, RuntimeDefault seccomp).
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -77,11 +78,13 @@ spec:
               value: {{ $val | quote }}
             {{- end }}
           volumeMounts:
-            # The pool password — mounted read-only at the node's own path so
-            # condor_token_create finds it without extra configuration. The
-            # key itself never leaves this pod.
+            # The pool password — Secret-mounted read-only as a file named
+            # POOL so condor_token_create's default SEC_PASSWORD_DIRECTORY
+            # finds it without extra configuration. The key material lives
+            # only in the Secret and this pod's mount, never on a node's
+            # filesystem.
             - name: pool-password
-              mountPath: {{ .Values.poolPassword.hostPath }}
+              mountPath: {{ .Values.poolPassword.mountPath }}
               readOnly: true
           livenessProbe:
             httpGet:
@@ -99,6 +102,8 @@ spec:
           {{- end }}
       volumes:
         - name: pool-password
-          hostPath:
-            path: {{ .Values.poolPassword.hostPath }}
-            type: Directory
+          secret:
+            secretName: {{ .Values.poolPassword.secretName }}
+            items:
+              - key: {{ .Values.poolPassword.secretKey }}
+                path: POOL

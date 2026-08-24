@@ -47,8 +47,9 @@ ENV PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1
 
 # No USER directive: the runtime uid is governed by the Helm chart's
-# podSecurityContext — reading the root-owned pool password typically
-# requires runAsUser 0 (see charts/condor-token-service/values.yaml).
+# podSecurityContext, which runs as a fixed non-root uid/gid now that the
+# pool password comes from a Secret volume rather than a root-owned
+# hostPath file (see charts/condor-token-service/values.yaml).
 
 EXPOSE 8080
 ENTRYPOINT ["/app/entrypoint.sh"]
