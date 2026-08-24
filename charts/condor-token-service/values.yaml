@@ -2,10 +2,9 @@
 #
 # This service exists because HTCondor IDTOKENS are signed with the pool
 # password — a SYMMETRIC key that must never leave Condor infrastructure.
-# The pod schedules across the condor-enabled AF login nodes (login01–04
-# ONLY — login05–08 have no condor scheduler/client configured; see
-# docs/pool-spike.md), which hold that key on their filesystem, and exposes
-# exactly one minting endpoint to the af-mcp-broker.
+# The key is Secret-mounted (poolPassword below) rather than read from a
+# node's filesystem, and this pod exposes exactly one minting endpoint to
+# the af-mcp-broker.
 
 # Two replicas across the login nodes give the mint path HA. The in-memory
 # per-subject rate limit is per-replica, so the effective limit is
@@ -23,18 +22,25 @@ image:
 # e.g. [{name: ghcr-pull-secret}] with the SealedSecret deployed alongside.
 imagePullSecrets: []
 
-# REQUIRED in practice: constrain the pod to the condor-enabled login nodes
-# (login01–04 ONLY) whose filesystems hold the pool password. The pool spike
-# found NO usable shared label on those four nodes (login04 alone has
-# `login: "true"`; login05 has `partition: login` but is NOT condor-enabled
-# — a trap), so either use `affinity` below with an explicit hostname list,
-# or (cleaner) apply a purposeful label to the four nodes and select it:
+# Historically REQUIRED: this constrained the pod to the condor-enabled
+# login nodes (login01–04 ONLY) whose filesystems held the pool password via
+# hostPath. Now that the key comes from the htcondor-pool-password Secret
+# (poolPassword below), that specific justification no longer applies —
+# nothing about a Secret mount requires a particular node. Left unset here
+# pending a deliberate decision on relaxing it; the pool spike's node
+# inventory (docs/pool-spike.md) still applies if you don't. If you do keep
+# a constraint, the pool spike found NO usable shared label on those four
+# nodes (login04 alone has `login: "true"`; login05 has `partition: login`
+# but is NOT condor-enabled — a trap), so either use `affinity` below with
+# an explicit hostname list, or (cleaner) apply a purposeful label to the
+# four nodes and select it:
 #   nodeSelector:
 #     af.uchicago.edu/condor-client: "true"
 nodeSelector: {}
 
-# The realistic AF deployment today (no shared label): nodeAffinity with an
-# explicit hostname list, e.g.
+# If you keep the historical node constraint (see nodeSelector's comment
+# above) and have no shared label: nodeAffinity with an explicit hostname
+# list, e.g.
 #   affinity:
 #     nodeAffinity:
 #       requiredDuringSchedulingIgnoredDuringExecution:
@@ -100,21 +106,26 @@ config:
 env: {}
 
 poolPassword:
-  # Node path holding the HTCondor pool password (POOL key). hostPath-mounted
-  # READ-ONLY into the container at the same path so condor_token_create's
-  # default SEC_PASSWORD_DIRECTORY works unchanged.
-  hostPath: /etc/condor/passwords.d
+  # HTCondor pool signing key (POOL), Secret-mounted read-only so the key
+  # material lives only in-cluster and never touches a node's filesystem.
+  # Mirrors how the AF htcondor namespace's execute/submit pods consume the
+  # same Secret (af/htcondor/execute/deployment-*.yaml, af/htcondor/submit).
+  secretName: htcondor-pool-password
+  secretKey: htcondor-pool-password
+  # condor_token_create's default SEC_PASSWORD_DIRECTORY expects a file
+  # literally named POOL in this directory.
+  mountPath: /etc/condor/passwords.d
 
-# Pod-level security context. Reading the root-owned pool key
-# (/etc/condor/passwords.d/POOL is conventionally mode 0600 root:root)
-# typically requires runAsUser 0 — everything else stays locked down: the
-# root filesystem is read-only, all capabilities are dropped, privilege
+# Pod-level security context. A Secret-mounted file is owned by the kubelet,
+# not a node's filesystem, so — unlike the old hostPath mount — nothing here
+# requires root: the pod runs as a fixed non-root uid/gid, the root
+# filesystem is read-only, all capabilities are dropped, privilege
 # escalation is disabled, seccomp is RuntimeDefault, and no ServiceAccount
-# token is mounted. If your node keeps the key group-readable by a dedicated
-# gid, set runAsUser/runAsGroup accordingly instead.
+# token is mounted.
 podSecurityContext:
-  runAsUser: 0
-  runAsGroup: 0
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
 
