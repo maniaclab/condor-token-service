@@ -93,9 +93,12 @@ The Helm chart at `charts/condor-token-service/` encodes the security model:
   key comes from a Secret, nothing forces a particular node — left
   available for sites that still want to constrain placement for other
   reasons (AF runs with no node constraint; two replicas for HA).
-- **Secret-mounted pool password** — the `htcondor-pool-password` Secret
-  mounted read-only as `/etc/condor/passwords.d/POOL`, so
-  `condor_token_create` works unconfigured.
+- **Secret-sourced pool password** — the `htcondor-pool-password` Secret,
+  re-permissioned by an init container (root, dropped to just `CHOWN`/
+  `FOWNER`) into an `emptyDir` as `/etc/condor/passwords.d/POOL` owned
+  `0600` by the app container's non-root uid — a raw Secret mount is
+  world-readable at `0644` root-owned, which `condor_token_create`'s own
+  secure-file check refuses to read.
 - **Locked-down pod** — read-only root filesystem, all capabilities dropped,
   `RuntimeDefault` seccomp, no ServiceAccount token, fixed non-root
   `runAsUser`/`runAsGroup`.

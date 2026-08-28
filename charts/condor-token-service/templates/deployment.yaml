@@ -40,6 +40,44 @@ spec:
       # rootfs, drop ALL, no privilege escalation, RuntimeDefault seccomp).
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # HTCondor's SEC_TOKEN_POOL_SIGNING_KEY_FILE read refuses any file
+        # that isn't tightly permissioned (root-owned hostPath mounts satisfy
+        # this for free; a Secret volume mounts world-readable at 0644 owned
+        # by root, which condor_token_create rejects outright: "Failed to
+        # read file ... securely"). This container -- the only one in the
+        # pod that runs as root -- copies the key out of the Secret mount
+        # into the pool-password emptyDir with the strict ownership/mode
+        # condor_token_create requires, before the main (non-root) container
+        # ever starts.
+        - name: fix-pool-password-perms
+          image: {{ include "condor-token-service.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              cp /pool-password-secret/POOL /pool-password/POOL
+              chown {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.runAsGroup }} /pool-password/POOL
+              chmod 0600 /pool-password/POOL
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              # CHOWN: hand the copied file to the main container's non-root
+              # uid/gid. FOWNER: chmod it afterward (the copy is root-owned
+              # at that point, not yet the target uid).
+              add: [CHOWN, FOWNER]
+          volumeMounts:
+            - name: pool-password-secret
+              mountPath: /pool-password-secret
+              readOnly: true
+            - name: pool-password
+              mountPath: /pool-password
       containers:
         - name: condor-token-service
           image: {{ include "condor-token-service.image" . }}
@@ -78,11 +116,9 @@ spec:
               value: {{ $val | quote }}
             {{- end }}
           volumeMounts:
-            # The pool password — Secret-mounted read-only as a file named
-            # POOL so condor_token_create's default SEC_PASSWORD_DIRECTORY
-            # finds it without extra configuration. The key material lives
-            # only in the Secret and this pod's mount, never on a node's
-            # filesystem.
+            # The pool password, already copied + re-permissioned by the
+            # fix-pool-password-perms init container above. Read-only here:
+            # this container never needs to write it.
             - name: pool-password
               mountPath: {{ .Values.poolPassword.mountPath }}
               readOnly: true
@@ -101,9 +137,11 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
-        - name: pool-password
+        - name: pool-password-secret
           secret:
             secretName: {{ .Values.poolPassword.secretName }}
             items:
               - key: {{ .Values.poolPassword.secretKey }}
                 path: POOL
+        - name: pool-password
+          emptyDir: {}

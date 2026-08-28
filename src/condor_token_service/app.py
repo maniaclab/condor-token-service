@@ -207,7 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="condor-token-service",
         description="HTCondor IDTOKEN issuance for the AF MCP platform",
-        version="0.1.2",
+        version="0.1.3",
     )
     application.state.settings = settings
     application.state.rate_limiter = RateLimiter(
