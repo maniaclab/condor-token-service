@@ -92,7 +92,7 @@ The Helm chart at `charts/condor-token-service/` encodes the security model:
   on the login nodes whose filesystem held the pool password; now that the
   key comes from a Secret, nothing forces a particular node — left
   available for sites that still want to constrain placement for other
-  reasons (AF currently keeps a login01–04 constraint; two replicas for HA).
+  reasons (AF runs with no node constraint; two replicas for HA).
 - **Secret-sourced pool password** — the `htcondor-pool-password` Secret,
   re-permissioned by an init container (root, dropped to just `CHOWN`/
   `FOWNER`) into an `emptyDir` as `/etc/condor/passwords.d/POOL` owned
