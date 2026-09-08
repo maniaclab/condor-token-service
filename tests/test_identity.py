@@ -97,6 +97,28 @@ class TestVerifyBrokerToken:
         claims = await identity.verify_broker_token(token, settings)
         assert claims["unixname"] == "gstark"
 
+    async def test_malformed_jwks_entry_is_401_not_unhandled(
+        self,
+        make_token: Callable[..., str],
+        settings: Settings,
+        stub_jwks_fetch: JwksFetchStub,
+    ) -> None:
+        # A JWKS entry that is missing the RSA n/e fields (e.g. a broker
+        # misconfiguration or a stray non-RSA key) makes
+        # RSAAlgorithm.from_jwk() raise jwt.exceptions.InvalidKeyError. That
+        # is not an InvalidTokenError, so it must still be classified as an
+        # audited 401 rather than escaping as an unhandled 500.
+        #
+        # `jwks` (and therefore stub_jwks_fetch.keys) is session-scoped, so
+        # reassign rather than mutate in place to avoid leaking the bad key
+        # into other tests.
+        malformed_key = {"kid": "malformed-key", "kty": "RSA", "use": "sig"}
+        stub_jwks_fetch.keys = [*stub_jwks_fetch.keys, malformed_key]
+        token = make_token(kid="malformed-key")
+        with pytest.raises(HTTPException) as excinfo:
+            await identity.verify_broker_token(token, settings)
+        assert excinfo.value.status_code == 401
+
 
 class TestJwksCache:
     async def test_second_verification_within_ttl_uses_cache(
